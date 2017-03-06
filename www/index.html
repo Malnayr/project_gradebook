@@ -10,14 +10,14 @@
 		Page Purpose: 	This file will contain 4 pages:
 							1) My Average Page
 								- 	The My Average Page will display a list of classes in a drop down box
-								-	The user will select a class and click "Calculate Average", and it will display the users
-									average for the class
+								-	The user will select a class and click "Calculate Average", and it will display the users grades
+									along with their average for the class
+								-	A special notification will be set depending on what the average is
 							2) Add Class Page (Form that saves class into database)
 								-	Form that will submit a new class/record into a class database
-								-	Form will include: Assessments, weight of exams, assignments, etc.
 							3) Add Grade Page
 								-	Form that will submit a grade for a class into a grade database
-								-	Form will include: Assignment Name, Class Name(dropdown), Category(dropdown), grade, weight.
+								-	Form will include: Assignment Name, Class Name(dropdown), Category(dropdown), grade.
 							4) Settings Page (This will use the dialog plug-in)
 								-	This page will have a reset database button
 								-	When user clicks the button it will confirm if they want to continue
@@ -30,6 +30,7 @@
    <script type = "text/javascript" charset = "utf-8" src = "cordova.js"></script>
    
    <script type = "text/javascript">
+	//Global variables that are used throughout the application
 	var db;
 	var scriptLines = "";
 	var classId;
@@ -48,7 +49,6 @@
 	{
 		//opens database
 		db = window.openDatabase("Gradebook_DB", "1.0", "Gradebook_DB", 200000);
-		
 		//Need script.txt inside the app package
 		window.resolveLocalFileSystemURL(cordova.file.applicationDirectory + "www/script.txt", processFile, onFileError);
 		loadDB();
@@ -151,18 +151,19 @@
 		//Variable to link a div and store html for ouput
 		var outputList = document.getElementById("classList");
 		var outputCSelect = document.getElementById("gClassSelect");
+		//Display the number of classes
 		document.getElementById("numClasses").innerHTML = "Number of Classes: " + len + "<br/>";
 		var classSelect = "<option>None</option>";
-		
+		//Loop that will get all the classes in the database
 		for (var i = 0; i < len; i++)
 		{
 			classSelect += "<option value="+ results.rows.item(i).id + ">" + results.rows.item(i).name + "</option>"; 			
-			
 		}
 		
-		
+		//Making sure there are classes in the database
 		if(len > 0)
 		{
+			//Set the dropdown box options
 			outputList.innerHTML = classSelect;
 			outputCSelect.innerHTML = classSelect;
 		}
@@ -173,6 +174,7 @@
 	*/
 	function calcAverage()
 	{
+		//Making sure that the user selects a valid class to calculate an average
 		if(document.getElementById("classList").value == "None")
 		{
 			alert("Please create or select a valid class.");
@@ -181,6 +183,7 @@
 		{
 			document.getElementById("gradeTable").innerHTML = "<tr><th>Name</th><th>Grade</th><th>Weight (%)</th></tr>";
 			document.getElementById("classAverage").innerHTML = "";
+			//reset average
 			average = 0;
 			//get grades from gradeDB
 			db.transaction(queryAverage, errorDB);
@@ -224,27 +227,29 @@
 		});
 	}
 	
+	/*
+		Function that queries all assesments that relate to the class selected from the drop down box.
+	*/
 	function queryAverage(tx)
 	{
+		//Get the class id
 		var aClassId = document.getElementById("classList").value;
+		//Get the class name
 		tx.executeSql('SELECT * FROM classDB WHERE id='+aClassId, [], function (tx, results){currentClass = results.rows.item(0).name;});
-		//query assesment types based on classId
-		//foreach assessment type 
-			//query grades based on assessment
-			//foreach grade
-				//add (grades * assignment weight) to a variable
-				//divide it by amount of grades * 100
-				//add it to average
+		//query to get all the assesments that relate to the class id
 		tx.executeSql('SELECT * FROM assessmentDB WHERE classId=' + aClassId, [], 
 		function(tx,results)
 		{
-			
+			//get the amount of records returned
 			var len = results.rows.length;
 			for (var x = 0; x < len; x++)
 			{
+				//query and get the current weight of the assessment
 				tx.executeSql('SELECT * FROM assessmentDB WHERE id='+results.rows.item(x).id, [], function (tx, results){currentWeight = results.rows.item(0).weight;});
+				//query the grades that relate to the assesment type
 				tx.executeSql('SELECT * FROM gradeDB WHERE typeId=' + results.rows.item(x).id, [], processAverage, errorDB);
 			}
+			//html to display if no grades were retrieved from the database
 			document.getElementById("classAverage").innerHTML = "No grades found for this class.";	
 		}, errorDB);
 	}
@@ -264,23 +269,25 @@
 		//loop through all the grades
 		for (var i = 0; i < len; i++)
 		{
-			//add grade * weight into asmtAverage
+			//add grade into asmtAverage
 			asmtAverage += results.rows.item(i).grade;
+			//add the records into html variable
 			html += "<tr><td>" + results.rows.item(i).name + "</td><td>" + results.rows.item(i).grade + "</td><td>" + currentWeight + "</td></tr>";
 		}
 		
 		if (len > 0)
 		{
-			//add grade data to the database table
+			//append the data in the html variable to the grade table
 			$("#gradeTable").append(html);
-			//get the average for the assesment by dividing it by the amount of grades * 100
+			//get the average for the assesment
 			asmtAverage = Math.round(((asmtAverage/ (len * 100)) * (currentWeight/100)) * 100);
 			//add assesment average to overall average
 			average += asmtAverage;
+			//send notification to phone
 			avgNotification(average);
 			
 		}
-
+		//diplay class average to the user
 		document.getElementById("classAverage").innerHTML = "Your average is " + average;
 	}
 	
@@ -292,9 +299,10 @@
 	*/
 	function addAssesment()
 	{
+		//keeping track on how much assesments are in the new class
 		aCount += 1;
-		//need to make each id unique later on
 		var html = "<tr><td><input type='text' id='aN" + aCount + "'></td><td><input type='number' max='100' id='aP" + aCount + "'></td></tr>"
+		//append a new assessment row/record in the assesment list
 		$("#assessmentList").append(html);
 	}
 	
@@ -304,8 +312,10 @@
 	function addClass()
 	{
 		//Error occuring on intial call of addClass(), but when you call it a seond time it will work.	
+		//Making sure that class name is not empty
 		if(document.getElementById("className").value != "")
 		{
+			//query to class into the database
 			db.transaction(queryClass, classError, classSuccess);	
 		}
 		else
@@ -314,13 +324,22 @@
 		}	
 	}
 	
+	/*
+		Function to run when class is added successfully. It will alert the user that it was successful, and
+		reset aCount and the assessment list.
+	*/
 	function classSuccess()
 	{
 		alert("Class has been created.");
+		//Emptying assesment list
 		document.getElementById("assessmentList").innerHTML = "";
+		//reset the assesment count
 		aCount = 0;
 	}
 	
+	/*
+		Function to run when adding a class does not work. It will alert the user.
+	*/
 	function classError()
 	{
 		alert("Error occured please click 'Add Class' again.");
@@ -341,14 +360,19 @@
 		//Process all the assesments into the database and to also append them to the drop down in the add grade page
 		for (var i = 1; i <= aCount; i++)
 		{
+			//making sure to query assesment records that are filled in properly
 			if(document.getElementById("aN"+i).value != "" && document.getElementById("aP"+i).value > 0)
 			{
+				//Get the amount of assesments in the database used for the id. We did it this way in class so I did it as well.
+				//Could've declared id as a primary key.
 				tx.executeSql('SELECT * FROM assessmentDB', [], function (tx, results){asmtId = results.rows.length;});
 				asmtId += 1;
+				//query the assesments in to database.
 				tx.executeSql("INSERT INTO assessmentDB VALUES (" + asmtId + "," + classId + ",'" + 
 					document.getElementById("aN"+i).value + "'," + document.getElementById("aP"+i).value + ")");
 			}
 		}
+		//recall processClasses to update all drop downs that relate to classes
 		tx.executeSql('SELECT * FROM classDB', [], processClasses, errorDB);
 	}
 	
@@ -359,6 +383,7 @@
 	*/
 	function populateAsmt()
 	{
+		//Query assesments that relate to the class selected and display it in the drop down box.
 		db.transaction(function(tx)
 		{
 			var classId = document.getElementById("gClassSelect").value;
@@ -378,33 +403,45 @@
 		var asmtSelect = "";
 		for (var i = 0; i < len; i++)
 		{
+			//Add assesment options into asmtSelect
 			asmtSelect += "<option value="+ results.rows.item(i).id + " selected>" + results.rows.item(i).name + "</option>"; 	
 		}
 		
+		//making sure that there are records that relate to the class
 		if(len > 0)
 		{
 			outputASelect.innerHTML = asmtSelect;
 		}
 		else
 		{
+			//If no records then the option is None
 			outputASelect.innerHTML = "<option>None</option>";
 		}
 	}
 	
+	/*
+		Function that is called when user wants to add a grade into the database
+	*/
 	function addGrade()
 	{
+		//Check if fields are valid
 		if(validGrade())
 		{
+			//query the grade into the database
 			db.transaction(queryGrade, gradeError, gradeSuccess);
 		}
 	}
 	
+	/*
+		Function that actually inserts the new grade record into the database.
+	*/
 	function queryGrade(tx)
 	{
 		alert("Adding Grade...");
 		//Generate a new ID for the new record
 		tx.executeSql('SELECT * FROM gradeDB', [], function (tx, results){gradeId = results.rows.length;});
 		gradeId += 1;
+		//Get the values of all the fields
 		var gName = document.getElementById("gName").value;
 		var gClass = document.getElementById("gClassSelect").value;
 		var gAsmt = document.getElementById("gAsmtSelect").value;
@@ -419,8 +456,11 @@
 	*/
 	function validGrade()
 	{
+		//Variable to check if everything is valid
 		var isValid = true;
+		//Error message variable to display to the user if isValid turns false
 		var errorMsg = "Please fix the following errors: \n";
+		//Get the value of all fields
 		var gName = document.getElementById("gName").value;
 		var gClass = document.getElementById("gClassSelect").value;
 		var gAsmt = document.getElementById("gAsmtSelect").value;
@@ -449,7 +489,7 @@
 			errorMsg += "- Please enter in a valid grade.\n";
 			isValid = false;
 		}
-		
+		//If isValid is false display the error message
 		if(!isValid)
 		{
 			alert(errorMsg);
@@ -458,11 +498,17 @@
 		return isValid;
 	}
 	
+	/*
+		Function to call if error occured when adding a grade into the database
+	*/
 	function gradeError()
 	{
 		alert("Error occured please click 'Submit Grade' again.");
 	}
 	
+	/*
+		Function to call if grade was successfully added into the database.
+	*/
 	function gradeSuccess()
 	{
 		alert("Grade record has been created.");
@@ -474,6 +520,7 @@
 	*/
 	function reloadDB()
 	{	
+		//Dialog object that will appear if a user wants to reset the database
 		navigator.notification.confirm(
 			'Wait! If you reset your databases you will lose all saved data in the databases. Are you sure you want to continue?', // message
 			 onConfirm,            // callback to invoke with index of button pressed
@@ -482,8 +529,13 @@
 		);		
 	}
 	
+	/*
+		Function that is called when the user selects an option from the dialog box.
+	*/
 	function onConfirm(buttonIndex) 
 	{
+		//If the user clicks yes (1) it will run the code inside the "if" statement and
+		//drop and recreate the tables
 		if(buttonIndex == 1)
 		{
 			alert("Reseting Databases...");
@@ -492,6 +544,9 @@
 		}
 	}
 	
+	/*
+		Function that reads and executes the commands inside the scriptLines variable
+	*/
 	function resetDB(tx)
 	{
 		//Create an array of strings from the string that came from the file
