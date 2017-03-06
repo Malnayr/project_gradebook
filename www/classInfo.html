@@ -1,0 +1,51 @@
+<!DOCTYPE HTML>
+<html>
+   <head>
+   <title>PhoneGap Application</title>
+   <meta name="viewport" content="width=device-width, initial-scale=1"> 
+	<!--
+		Name: 			classInfo.html
+		Authors: 		Ryan Lam (CST215)
+		Date: 			Feb 10, 2017
+		Page Purpose: 	This page will display information about a class that the user selects.
+						Overall the page will include:
+							1) Class Name
+							2) Class average
+							3) A list of assignments/exams
+	-->
+  <link rel="stylesheet" href="css/jquery.mobile-1.1.0.min.css" />
+  <script src="js/jquery-1.7.1.min.js"></script>
+  <script src="js/jquery.mobile-1.1.0.min.js"></script>
+   <script type = "text/javascript" charset = "utf-8" src = "cordova.js"></script>
+   <script type = "text/javascript" charset = "utf-8" src = "cordova_plugins.js"></script>
+   <script type = "text/javascript" charset = "utf-8" src = "phonegap.js"></script>
+   
+   <script type = "text/javascript">
+      function onBodyLoad()
+      {
+         document.addEventListener("deviceready", PhonegapLoaded, false);
+      }
+      function PhonegapLoaded()
+      {
+         alert("Phone Gap has loaded.");
+      }
+   </script>
+   </head>
+   
+   <body onload = "onBodyLoad()">
+		<!--Class Information Page-->
+		<div data-role="page">
+			<div data-role="header">
+				<h1>App Header Text</h1>
+			</div><!-- /header -->
+
+			<div data-role="content">	
+				<div id="contentdiv">
+				</div>
+			</div><!-- /content -->
+		</div><!-- /Class Information Page -->
+		
+		
+   </body>
+   
+</html>

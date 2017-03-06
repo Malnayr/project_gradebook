@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS classDB
+DROP TABLE IF EXISTS assessmentDB
+DROP TABLE IF EXISTS gradeDB
+CREATE TABLE IF NOT EXISTS classDB (id unique, name)
+CREATE TABLE IF NOT EXISTS assessmentDB (id unique, classId, name, weight)
+CREATE TABLE IF NOT EXISTS gradeDB (id unique, name, classId, typeId, grade)

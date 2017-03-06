@@ -1,0 +1,606 @@
+<!DOCTYPE HTML>
+<html>
+   <head>
+   <title>My Gradebook</title>
+   <meta name="viewport" content="width=device-width, initial-scale=1"> 
+	<!--
+		Name: 			index.html
+		Authors: 		Ryan Lam (CST215)
+		Date: 			Feb 10, 2017
+		Page Purpose: 	This file will contain 4 pages:
+							1) My Average Page
+								- 	The My Average Page will display a list of classes in a drop down box
+								-	The user will select a class and click "Calculate Average", and it will display the users
+									average for the class
+							2) Add Class Page (Form that saves class into database)
+								-	Form that will submit a new class/record into a class database
+								-	Form will include: Assessments, weight of exams, assignments, etc.
+							3) Add Grade Page
+								-	Form that will submit a grade for a class into a grade database
+								-	Form will include: Assignment Name, Class Name(dropdown), Category(dropdown), grade, weight.
+							4) Settings Page (This will use the dialog plug-in)
+								-	This page will have a reset database button
+								-	When user clicks the button it will confirm if they want to continue
+	-->
+   <link rel="stylesheet" href="css/jquery.mobile-1.1.0.min.css" />
+   <script src="js/jquery-1.7.1.min.js"></script>
+   <script src="js/jquery.mobile-1.1.0.min.js"></script>
+   <script type = "text/javascript" charset = "utf-8" src = "cordova_plugins.js"></script>
+   <script type = "text/javascript" charset = "utf-8" src = "phonegap.js"></script>
+   <script type = "text/javascript" charset = "utf-8" src = "cordova.js"></script>
+   
+   <script type = "text/javascript">
+	var db;
+	var scriptLines = "";
+	var classId;
+	var asmtId;
+	var gradeId;
+	var currentWeight;
+	var currentClass = "";
+	var average = 0;
+	var aCount = 0;
+	
+	function onBodyLoad()
+	{
+		document.addEventListener("deviceready", PhonegapLoaded, false);
+	}
+	function PhonegapLoaded()
+	{
+		//opens database
+		db = window.openDatabase("Gradebook_DB", "1.0", "Gradebook_DB", 200000);
+		
+		//Need script.txt inside the app package
+		window.resolveLocalFileSystemURL(cordova.file.applicationDirectory + "www/script.txt", processFile, onFileError);
+		loadDB();
+
+	}
+
+	//----------------------------------------------Database Functions--------------------------------------------------
+	
+	
+	/*
+		Function that creates the databases to store all the classes and assignments
+	*/
+	function loadDB()
+	{	
+		alert("Loading Database...");
+		//start series of commands to create the database
+		db.transaction(createDB, errorDB, successDB);
+		
+	}
+	
+	/*
+		Function used to create database tables when application loads. It databases exists already it will not make another one.
+	*/
+	function createDB(tx)
+	{
+		tx.executeSql("CREATE TABLE IF NOT EXISTS classDB (id unique, name)");
+		tx.executeSql("CREATE TABLE IF NOT EXISTS assessmentDB (id unique, classId, name, weight)");
+		tx.executeSql("CREATE TABLE IF NOT EXISTS gradeDB (id unique, name, classId, typeId, grade)");
+	}
+	
+	/*
+		Function that is called when there is a database error
+	*/
+	function onFileError(error)
+	{
+		alert("File error: " + error + " - Problem loading in file");
+	}
+	
+	/*
+		Function that is called to processes the file specified
+	*/
+	function processFile(fileEntry)
+	{
+		//file method, we pass in a function to process the file
+		fileEntry.file(function(file)
+		{
+		//file reader can read through a file entry
+		var reader = new FileReader();
+			//set the function that will be called when the reader is done reading
+			reader.onloadend = function(e)
+			{
+				//result is the contents of the file stored in the reader
+				//store the results in a var we'll use later
+				scriptLines = this.result;
+			}
+			reader.readAsText(file);
+		});
+	}
+	
+	/*
+		Success function that is called when a database successfully created.
+	*/
+	function successDB()
+	{
+		alert("DB Created Successfully");
+		// do transaction to query the new rows
+		db.transaction(queryDB, errorDB);
+	}
+	
+	/*
+		Function that is called when populating the database is successful.
+		It will call several executeSql function which will populate some of the pages
+	*/
+	function queryDB(tx)
+	{
+		// alternate signature for executeSql for commands that return rows.
+		// params: query text, array of params that will replace ? ? for a parameterized, function to process the rows, error function
+		tx.executeSql('SELECT * FROM classDB', [], processClasses, errorDB);
+	}
+	
+	/*
+		Error function that is called when a database error occurs.
+		It will alert the user of the error.
+	*/
+	function errorDB(error)
+	{
+		alert("Error processing DB command: "  + error.code);
+		alert("Error message: " + error.message);
+	}
+	
+	//---------------------------------------------------My Average Page--------------------------------------------------------
+	
+	/*
+		Function that will process all fields related to class.
+	*/
+	function processClasses(tx, results)
+	{
+		//Get total number of classes
+		var len = results.rows.length;
+		//Variable to link a div and store html for ouput
+		var outputList = document.getElementById("classList");
+		var outputCSelect = document.getElementById("gClassSelect");
+		document.getElementById("numClasses").innerHTML = "Number of Classes: " + len + "<br/>";
+		var classSelect = "<option>None</option>";
+		
+		for (var i = 0; i < len; i++)
+		{
+			classSelect += "<option value="+ results.rows.item(i).id + ">" + results.rows.item(i).name + "</option>"; 			
+			
+		}
+		
+		
+		if(len > 0)
+		{
+			outputList.innerHTML = classSelect;
+			outputCSelect.innerHTML = classSelect;
+		}
+	}
+	
+	/*
+		Function that determines the average for the class selected in the drop down box.
+	*/
+	function calcAverage()
+	{
+		if(document.getElementById("classList").value == "None")
+		{
+			alert("Please create or select a valid class.");
+		}
+		else
+		{
+			document.getElementById("gradeTable").innerHTML = "<tr><th>Name</th><th>Grade</th><th>Weight (%)</th></tr>";
+			document.getElementById("classAverage").innerHTML = "";
+			average = 0;
+			//get grades from gradeDB
+			db.transaction(queryAverage, errorDB);
+		}
+
+	}
+	
+	/*
+		Function that sends a notification based on what the average is.
+	*/
+	function avgNotification(average)
+	{
+		var titleMsg = "";
+		var textMsg = "";
+		//determine the title and text message depending on the average
+		if(average < 60)
+		{
+			titleMsg = "You need to work harder!";
+			textMsg = average + " in " + currentClass + "? Come on you can do better!";
+		}
+		if(average > 60)
+		{
+			titleMsg = "Cutting it close!";
+			textMsg = average + " in " + currentClass + "? That's pretty decent.";
+		}
+		if(average > 80)
+		{
+			titleMsg = "You're doing great!";
+			textMsg = average + " in " + currentClass + "? Keep up with the good work!";
+		}
+		if(average == 100)
+		{
+			titleMsg = "Holy Cow! Impossible.";
+			textMsg = average + " in " + currentClass + "?! Are you cheating?!";
+		}
+		//send notification to device with appropriate title and text
+		cordova.plugins.notification.local.schedule ({
+			id: 1,
+			title: titleMsg,
+			text: textMsg,
+		});
+	}
+	
+	function queryAverage(tx)
+	{
+		var aClassId = document.getElementById("classList").value;
+		tx.executeSql('SELECT * FROM classDB WHERE id='+aClassId, [], function (tx, results){currentClass = results.rows.item(0).name;});
+		//query assesment types based on classId
+		//foreach assessment type 
+			//query grades based on assessment
+			//foreach grade
+				//add (grades * assignment weight) to a variable
+				//divide it by amount of grades * 100
+				//add it to average
+		tx.executeSql('SELECT * FROM assessmentDB WHERE classId=' + aClassId, [], 
+		function(tx,results)
+		{
+			
+			var len = results.rows.length;
+			for (var x = 0; x < len; x++)
+			{
+				tx.executeSql('SELECT * FROM assessmentDB WHERE id='+results.rows.item(x).id, [], function (tx, results){currentWeight = results.rows.item(0).weight;});
+				tx.executeSql('SELECT * FROM gradeDB WHERE typeId=' + results.rows.item(x).id, [], processAverage, errorDB);
+			}
+			document.getElementById("classAverage").innerHTML = "No grades found for this class.";	
+		}, errorDB);
+	}
+
+	
+	/*
+		Function that processes all the grades to find the average for the class. It will also append all the grades for the 
+		class in a table for the user.
+	*/
+	function processAverage(tx, results)
+	{
+		var asmtAverage = 0;
+		//Get total number of grades
+		var len = results.rows.length;
+		var html = "";
+		
+		//loop through all the grades
+		for (var i = 0; i < len; i++)
+		{
+			//add grade * weight into asmtAverage
+			asmtAverage += results.rows.item(i).grade;
+			html += "<tr><td>" + results.rows.item(i).name + "</td><td>" + results.rows.item(i).grade + "</td><td>" + currentWeight + "</td></tr>";
+		}
+		
+		if (len > 0)
+		{
+			//add grade data to the database table
+			$("#gradeTable").append(html);
+			//get the average for the assesment by dividing it by the amount of grades * 100
+			asmtAverage = Math.round(((asmtAverage/ (len * 100)) * (currentWeight/100)) * 100);
+			//add assesment average to overall average
+			average += asmtAverage;
+			avgNotification(average);
+			
+		}
+
+		document.getElementById("classAverage").innerHTML = "Your average is " + average;
+	}
+	
+	
+	//---------------------------------------------------Add Class/Grade Page---------------------------------------------------	
+	
+	/*
+		Function that adds an assesments row/record into the assesment table
+	*/
+	function addAssesment()
+	{
+		aCount += 1;
+		//need to make each id unique later on
+		var html = "<tr><td><input type='text' id='aN" + aCount + "'></td><td><input type='number' max='100' id='aP" + aCount + "'></td></tr>"
+		$("#assessmentList").append(html);
+	}
+	
+	/*
+		Function call a transaction to add new class into table, and assessments into the assessment table
+	*/
+	function addClass()
+	{
+		//Error occuring on intial call of addClass(), but when you call it a seond time it will work.	
+		if(document.getElementById("className").value != "")
+		{
+			db.transaction(queryClass, classError, classSuccess);	
+		}
+		else
+		{
+			alert("Please enter in a class name.");
+		}	
+	}
+	
+	function classSuccess()
+	{
+		alert("Class has been created.");
+		document.getElementById("assessmentList").innerHTML = "";
+		aCount = 0;
+	}
+	
+	function classError()
+	{
+		alert("Error occured please click 'Add Class' again.");
+	}
+	
+	/*
+		Function that adds/queries the class & assesments into the database
+	*/
+	function queryClass(tx)
+	{
+		alert("Adding Class...");
+		//Generate a new ID for the new record
+		tx.executeSql('SELECT * FROM classDB', [], function (tx, results){classId = results.rows.length;});
+		classId += 1;
+		//insert the new record into the db, 
+		tx.executeSql('INSERT INTO classDB VALUES(' + classId + ',"' + document.getElementById("className").value + '")');
+		
+		//Process all the assesments into the database and to also append them to the drop down in the add grade page
+		for (var i = 1; i <= aCount; i++)
+		{
+			if(document.getElementById("aN"+i).value != "" && document.getElementById("aP"+i).value > 0)
+			{
+				tx.executeSql('SELECT * FROM assessmentDB', [], function (tx, results){asmtId = results.rows.length;});
+				asmtId += 1;
+				tx.executeSql("INSERT INTO assessmentDB VALUES (" + asmtId + "," + classId + ",'" + 
+					document.getElementById("aN"+i).value + "'," + document.getElementById("aP"+i).value + ")");
+			}
+		}
+		tx.executeSql('SELECT * FROM classDB', [], processClasses, errorDB);
+	}
+	
+	
+	
+	/*
+		Function that populates the assesments drop down box depending on what class is selected
+	*/
+	function populateAsmt()
+	{
+		db.transaction(function(tx)
+		{
+			var classId = document.getElementById("gClassSelect").value;
+			tx.executeSql('SELECT * FROM assessmentDB WHERE classId='+ classId, [], processAssessments, errorDB );
+		
+		}, errorDB);
+
+	}
+	
+	/*
+		Function to add assesments into the drop down box on add grade page
+	*/
+	function processAssessments(tx, results)
+	{
+		var len = results.rows.length;
+		var outputASelect = document.getElementById("gAsmtSelect");
+		var asmtSelect = "";
+		for (var i = 0; i < len; i++)
+		{
+			asmtSelect += "<option value="+ results.rows.item(i).id + " selected>" + results.rows.item(i).name + "</option>"; 	
+		}
+		
+		if(len > 0)
+		{
+			outputASelect.innerHTML = asmtSelect;
+		}
+		else
+		{
+			outputASelect.innerHTML = "<option>None</option>";
+		}
+	}
+	
+	function addGrade()
+	{
+		if(validGrade())
+		{
+			db.transaction(queryGrade, gradeError, gradeSuccess);
+		}
+	}
+	
+	function queryGrade(tx)
+	{
+		alert("Adding Grade...");
+		//Generate a new ID for the new record
+		tx.executeSql('SELECT * FROM gradeDB', [], function (tx, results){gradeId = results.rows.length;});
+		gradeId += 1;
+		var gName = document.getElementById("gName").value;
+		var gClass = document.getElementById("gClassSelect").value;
+		var gAsmt = document.getElementById("gAsmtSelect").value;
+		var gGrade = document.getElementById("gGrade").value;
+		
+		//insert the new record into the db, 
+		tx.executeSql('INSERT INTO gradeDB VALUES(' + gradeId + ',"' + gName + '",'+ gClass + ',' + gAsmt + ',' + gGrade +')');
+	}
+	
+	/*
+		Function used to check if all grade fields are filled in
+	*/
+	function validGrade()
+	{
+		var isValid = true;
+		var errorMsg = "Please fix the following errors: \n";
+		var gName = document.getElementById("gName").value;
+		var gClass = document.getElementById("gClassSelect").value;
+		var gAsmt = document.getElementById("gAsmtSelect").value;
+		var gGrade = document.getElementById("gGrade").value;
+		
+		if(gName == "")
+		{
+			errorMsg += "- Please enter in a name.\n";
+			isValid = false;
+		}
+		
+		if(gClass == "")
+		{
+			errorMsg += "- Please select a class.\n";
+			isValid = false;
+		}
+		
+		if(gAsmt == "None")
+		{
+			errorMsg += "- Please select an assesment type.\n";
+			isValid = false;
+		}
+		
+		if(gGrade < 0 || gGrade == "")
+		{
+			errorMsg += "- Please enter in a valid grade.\n";
+			isValid = false;
+		}
+		
+		if(!isValid)
+		{
+			alert(errorMsg);
+		}
+		
+		return isValid;
+	}
+	
+	function gradeError()
+	{
+		alert("Error occured please click 'Submit Grade' again.");
+	}
+	
+	function gradeSuccess()
+	{
+		alert("Grade record has been created.");
+	}
+	//---------------------------------------------------My Settings Page---------------------------------------------------
+	
+	/*
+		Function that creates the databases to store all the classes and assignments
+	*/
+	function reloadDB()
+	{	
+		navigator.notification.confirm(
+			'Wait! If you reset your databases you will lose all saved data in the databases. Are you sure you want to continue?', // message
+			 onConfirm,            // callback to invoke with index of button pressed
+			'Reseting Databases!',           // title
+			['Yes','No']     // buttonLabels
+		);		
+	}
+	
+	function onConfirm(buttonIndex) 
+	{
+		if(buttonIndex == 1)
+		{
+			alert("Reseting Databases...");
+			//start series of commands to create the database
+			db.transaction(resetDB, errorDB, successDB);
+		}
+	}
+	
+	function resetDB(tx)
+	{
+		//Create an array of strings from the string that came from the file
+		var lines = scriptLines.split(/\n/); //split on new line character
+		//loop and run each line as a command
+		for(var i = 0; i < lines.length; i++)
+		{
+			tx.executeSql(lines[i]);
+		}
+		alert(scriptLines);
+	}
+	
+   </script>
+   </head>
+   
+   <body onload = "onBodyLoad()">
+		<!--My Average Page-->
+		<div data-role="page" id="clPage">
+			<div data-role="header">
+				<h1>My Average</h1>
+			</div><!-- /header -->
+			<div data-role="main" class="ui-content">
+				<div id="numClasses"></div>
+				<select id="classList"><option>None</option></select>
+				<h2>Grades</h2>
+				<table id="gradeTable" border="1">
+					<tr><th>Name</th><th>Grade</th><th>Weight (%)</th></tr>
+				</table>
+				<div id="classAverage"></div>
+				</br>
+				<input type="button" value="Calculate Average" onclick="calcAverage();">
+			</div><!-- /content -->
+			<div data-role="footer" style="text-align:center;">
+				<a href="#clPage">My Average</a>
+				<a href="#acPage">Add Class</a>
+				<a href="#agPage">Add Grade</a>
+				<a href="#mpPage">Settings</a>	
+			</div>
+		</div>
+		<!-- /My Average Page -->
+		
+		<!--Add Class Page-->
+		<div data-role="page" id="acPage">
+			<div data-role="header">
+				<h1>Add Class</h1>
+			</div><!-- /header -->
+			<div data-role="main" class="ui-content">	
+				<div id="classInfo">
+					<form action="" method="POST">
+					Class Name:<input type="text" id="className">
+					<h3>Assessments</h3>
+					<table id="assessmentList" border="1">
+						<tr><th>Assessment Name</th><th>Weight (%)</th></tr>
+					</table>
+					<input type="button" value="Add Assessment" onclick="addAssesment();">
+					<input type="button" value="Add Class" onclick="addClass();">
+					</form>
+				</div>
+			</div><!-- /content -->
+			<div data-role="footer" style="text-align:center;">
+				<a href="#clPage">My Average</a>
+				<a href="#acPage">Add Class</a>
+				<a href="#agPage">Add Grade</a>
+				<a href="#mpPage">Settings</a>	
+			</div>
+		</div>
+		<!-- /Add Class Page -->
+		
+		<!--Add Grade Page-->
+		<div data-role="page" id="agPage">
+			<div data-role="header">
+				<h1>Add Grade</h1>
+			</div><!-- /header -->
+			<div data-role="main" class="ui-content">	
+				<div id="GradeInfo">
+					Name: <input type="text" id="gName">
+					Class: <select id="gClassSelect" onchange="populateAsmt();"><option>None</option></select>
+					Assessment Type: <select id="gAsmtSelect"><option>None</option></select>
+					Grade(0-100): <input type="number" min="0" max="100" id="gGrade">
+					<input type="button" value="Submit Grade" onclick="addGrade();">
+				</div>
+			</div><!-- /content -->
+			<div data-role="footer" style="text-align:center;">
+				<a href="#clPage">My Average</a>
+				<a href="#acPage">Add Class</a>
+				<a href="#agPage">Add Grade</a>
+				<a href="#mpPage">Settings</a>	
+			</div>
+		</div>
+		<!-- /Add Grade Page -->
+		
+		<!--My Settings Page-->
+		<div data-role="page" id="mpPage">
+			<div data-role="header">
+				<h1>Settings</h1>
+			</div><!-- /header -->
+			<div data-role="main" class="ui-content">	
+				<div id="settings">
+					<input type="button" value="Reset Databases" onclick="reloadDB();">
+				</div>
+			</div><!-- /content -->
+			<div data-role="footer" style="text-align:center;">
+				<a href="#clPage">My Average</a>
+				<a href="#acPage">Add Class</a>
+				<a href="#agPage">Add Grade</a>
+				<a href="#mpPage">Settings</a>
+			</div>
+		</div>
+		<!-- /My Settings Page -->
+   </body>
+   
+</html>
